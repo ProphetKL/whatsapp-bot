@@ -43,17 +43,17 @@ echo "  请设置登录管理界面的用户名和密码。"
 echo "  密码将保存在服务器的 .env 文件中（仅 root 可读）。"
 echo ""
 
-read -rp "  用户名 [默认: admin]: " AUTH_USER_INPUT
+read -rp "  用户名 [默认: admin]: " AUTH_USER_INPUT </dev/tty
 AUTH_USER_INPUT="${AUTH_USER_INPUT:-admin}"
 
 while true; do
-  read -rsp "  密码（最少 8 位）: " AUTH_PASS_INPUT
+  read -rsp "  密码（最少 8 位）: " AUTH_PASS_INPUT </dev/tty
   echo ""
   if [[ ${#AUTH_PASS_INPUT} -lt 8 ]]; then
     warn "密码不足 8 位（当前 ${#AUTH_PASS_INPUT} 位），请重新输入"
     continue
   fi
-  read -rsp "  再次输入密码确认: " AUTH_PASS_CONFIRM
+  read -rsp "  再次输入密码确认: " AUTH_PASS_CONFIRM </dev/tty
   echo ""
   if [[ "$AUTH_PASS_INPUT" != "$AUTH_PASS_CONFIRM" ]]; then
     warn "两次密码不一致，请重新输入"
@@ -62,7 +62,7 @@ while true; do
   break
 done
 
-read -rp "  管理界面端口 [默认: 3000]: " PORT_INPUT
+read -rp "  管理界面端口 [默认: 3000]: " PORT_INPUT </dev/tty
 PORT_INPUT="${PORT_INPUT:-3000}"
 echo ""
 info "账户设置完成"
