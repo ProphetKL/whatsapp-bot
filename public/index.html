@@ -182,7 +182,10 @@
 <body>
 
 <header>
-  <h1>📱 WhatsApp 定时消息管理</h1>
+  <div>
+    <h1>📱 WhatsApp 定时消息管理</h1>
+    <span id="version-badge" style="font-size:11px;opacity:0.6;margin-top:2px;display:block"></span>
+  </div>
   <div style="display:flex;align-items:center;gap:12px;">
     <span id="status-badge">⏳ 正在连接...</span>
     <button id="logout-btn" class="btn" style="display:none;background:rgba(255,255,255,0.2);color:white;font-size:13px;" onclick="doLogout()">切换账号</button>
@@ -525,7 +528,8 @@ async function loadConfig() {
 
 async function checkStatus() {
   const res = await fetch('/api/status');
-  const { ready, hasQR } = await res.json();
+  const { ready, hasQR, version } = await res.json();
+  if (version) document.getElementById('version-badge').textContent = `v${version}`;
   const badge = document.getElementById('status-badge');
   badge.textContent = ready ? '✅ 已连接' : (hasQR ? '📷 请扫码登录' : '⏳ 正在初始化...');
   badge.className = ready ? 'status-badge ready' : 'status-badge';

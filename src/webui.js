@@ -6,6 +6,7 @@ const { reloadJobs } = require('./scheduler');
 
 const CONFIG_PATH = path.join(__dirname, '..', 'config', 'schedules.json');
 const PUBLIC_PATH = path.join(__dirname, '..', 'public');
+const { version: APP_VERSION } = require('../package.json');
 
 const DEFAULT_CONFIG = {
   settings: { timezone: 'Asia/Hong_Kong', groupResolveCacheMinutes: 60 },
@@ -138,7 +139,7 @@ function startWebUI(port) {
 
   // WhatsApp 连接状态
   app.get('/api/status', (req, res) => {
-    res.json({ ready: !!global.whatsappReady, hasQR: !!global.latestQR });
+    res.json({ ready: !!global.whatsappReady, hasQR: !!global.latestQR, version: APP_VERSION });
   });
 
   // 登出当前账号，清除会话，重新显示 QR 码
