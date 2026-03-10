@@ -4,10 +4,7 @@
 
 set -e
 
-# ── 找到 bot 目录（脚本所在的上一级）──────────────────────────
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-
+BOT_DIR=/opt/whatsapp-bot/cloud
 cd "$BOT_DIR"
 
 echo "========================================"
