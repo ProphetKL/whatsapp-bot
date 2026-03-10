@@ -167,6 +167,8 @@
     .alert { padding: 10px 14px; border-radius: 7px; margin-bottom: 16px; font-size: 13px; }
     .alert-warning { background: #fff7e6; border: 1px solid #ffd591; color: #873800; }
     .alert-success { background: #f6ffed; border: 1px solid #b7eb8f; color: #135200; }
+    .tag-cal { background: #f0f4ff; color: #3b5bdb; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+    .cal-url { font-size: 12px; color: #aaa; word-break: break-all; margin-top: 4px; }
 
     #toast {
       position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
@@ -204,6 +206,19 @@
     </div>
     <div class="card-body">
       <div id="job-list" class="job-list">
+        <div class="empty-state">加载中...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 日历提醒任务 -->
+  <div class="card" id="calendar-card" style="display:none">
+    <div class="card-header">
+      <h2>📅 日历提醒任务</h2>
+      <button class="btn btn-primary" onclick="openAddCalendarModal()">＋ 新增日历提醒</button>
+    </div>
+    <div class="card-body">
+      <div id="calendar-job-list" class="job-list">
         <div class="empty-state">加载中...</div>
       </div>
     </div>
@@ -292,6 +307,74 @@
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal()">取消</button>
       <button class="btn btn-primary" onclick="saveJob()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 日历提醒弹窗 -->
+<div class="modal-overlay" id="calendar-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="cal-modal-title">新增日历提醒</h3>
+      <button class="modal-close" onclick="closeCalendarModal()">×</button>
+    </div>
+    <div class="modal-body">
+
+      <div class="form-group">
+        <label>任务名称（仅用于识别）</label>
+        <input type="text" id="cf-id" placeholder="例：家庭日历提醒" />
+      </div>
+
+      <div class="form-group">
+        <label>Google 日历 ICS 链接</label>
+        <input type="text" id="cf-url" placeholder="https://calendar.google.com/calendar/ical/.../basic.ics" />
+        <div class="helper">在 Google 日历 → 右键某个日历 → 设置 → 「整合日历」→「iCal 格式的公开地址」</div>
+        <button class="btn btn-secondary btn-sm" style="margin-top:8px" onclick="previewCalendar()">🔍 验证并预览事件</button>
+        <div id="cf-preview" style="margin-top:8px;display:none"></div>
+      </div>
+
+      <div class="form-group">
+        <label>提前多久提醒</label>
+        <select id="cf-minutes" onchange="onReminderSelectChange(this)">
+          <option value="5">5 分钟前</option>
+          <option value="15">15 分钟前</option>
+          <option value="30" selected>30 分钟前</option>
+          <option value="60">1 小时前</option>
+          <option value="120">2 小时前</option>
+          <option value="360">6 小时前</option>
+          <option value="1440">1 天前</option>
+          <option value="custom">自定义...</option>
+        </select>
+        <div id="cf-minutes-custom" style="display:none;margin-top:8px">
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="number" id="cf-minutes-input" min="1" placeholder="输入分钟数"
+              style="flex:1;padding:9px 12px;border:1px solid #d9d9d9;border-radius:7px;font-size:14px;outline:none" />
+            <span style="color:#666;font-size:13px;white-space:nowrap">分钟前</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>发送到群组</label>
+        <select id="cf-group-select" style="display:none"></select>
+        <input type="text" id="cf-group-text" placeholder="必须与 WhatsApp 群组名完全一致" />
+        <div class="helper" id="cf-group-helper">区分大小写</div>
+      </div>
+
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <label class="toggle">
+            <input type="checkbox" id="cf-enabled" checked />
+            <span class="toggle-slider"></span>
+          </label>
+          立即启用此任务
+        </label>
+      </div>
+
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeCalendarModal()">取消</button>
+      <button class="btn btn-primary" onclick="saveCalendarJob()">保存</button>
     </div>
   </div>
 </div>
@@ -448,10 +531,12 @@ async function checkStatus() {
   if (ready) {
     qrCard.style.display = 'none';
     jobsCard.style.display = 'block';
+    document.getElementById('calendar-card').style.display = 'block';
     const warn = document.getElementById('whatsapp-warning');
     if (warn) warn.style.display = 'none';
   } else {
     jobsCard.style.display = 'none';
+    document.getElementById('calendar-card').style.display = 'none';
     qrCard.style.display = 'block';
     const warn = document.getElementById('whatsapp-warning');
     if (warn) warn.style.display = 'block';
@@ -678,6 +763,228 @@ async function doLogout() {
 loadConfig();
 checkStatus();
 setInterval(checkStatus, 5000);
+
+// ── 日历提醒任务 ──────────────────────────────────────────
+
+let calendarJobs = [];
+let editingCalendarId = null;
+
+async function loadCalendarJobs() {
+  const res = await fetch('/api/calendar-jobs');
+  calendarJobs = await res.json();
+  renderCalendarJobs();
+}
+
+function minutesLabel(min) {
+  if (min < 60) return `${min} 分钟`;
+  if (min < 1440) return `${min / 60} 小时`;
+  return `${min / 1440} 天`;
+}
+
+function renderCalendarJobs() {
+  const list = document.getElementById('calendar-job-list');
+  if (!calendarJobs.length) {
+    list.innerHTML = '<div class="empty-state"><p>还没有日历提醒任务，点击右上角新增</p></div>';
+    return;
+  }
+  list.innerHTML = calendarJobs.map(job => `
+    <div class="job-item ${job.enabled ? '' : 'disabled'}">
+      <label class="toggle">
+        <input type="checkbox" ${job.enabled ? 'checked' : ''} onchange="toggleCalendarJob('${escHtml(job.id)}', this.checked)" />
+        <span class="toggle-slider"></span>
+      </label>
+      <div class="job-info">
+        <div class="job-title">${escHtml(job.id)}</div>
+        <div class="job-meta">
+          <span class="tag">📌 ${escHtml(job.groupName)}</span>
+          <span class="tag-cal">⏰ 提前 ${minutesLabel(job.minutesBefore)}</span>
+        </div>
+        <div class="cal-url">${escHtml(job.calendarUrl)}</div>
+      </div>
+      <div class="job-actions">
+        <button class="btn btn-secondary btn-sm" onclick="openEditCalendarModal('${escHtml(job.id)}')">编辑</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteCalendarJob('${escHtml(job.id)}')">删除</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function toggleCalendarJob(id, enabled) {
+  const job = calendarJobs.find(j => j.id === id);
+  if (!job) return;
+  job.enabled = enabled;
+  await fetch('/api/calendar-jobs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(job),
+  });
+  renderCalendarJobs();
+}
+
+async function deleteCalendarJob(id) {
+  if (!confirm(`确定删除日历提醒"${id}"吗？`)) return;
+  await fetch(`/api/calendar-jobs/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  calendarJobs = calendarJobs.filter(j => j.id !== id);
+  renderCalendarJobs();
+  showToast('已删除');
+}
+
+function onReminderSelectChange(sel) {
+  document.getElementById('cf-minutes-custom').style.display = sel.value === 'custom' ? 'block' : 'none';
+}
+
+function getReminderMinutes() {
+  const sel = document.getElementById('cf-minutes');
+  if (sel.value === 'custom') {
+    const v = parseInt(document.getElementById('cf-minutes-input').value);
+    return isNaN(v) || v < 1 ? null : v;
+  }
+  return parseInt(sel.value);
+}
+
+function setReminderMinutes(min) {
+  const sel = document.getElementById('cf-minutes');
+  const custom = document.getElementById('cf-minutes-custom');
+  const presets = ['5','15','30','60','120','360','1440'];
+  if (presets.includes(String(min))) {
+    sel.value = String(min);
+    custom.style.display = 'none';
+  } else {
+    sel.value = 'custom';
+    custom.style.display = 'block';
+    document.getElementById('cf-minutes-input').value = min;
+  }
+}
+
+function openAddCalendarModal() {
+  editingCalendarId = null;
+  document.getElementById('cal-modal-title').textContent = '新增日历提醒';
+  document.getElementById('cf-id').value = '';
+  document.getElementById('cf-url').value = '';
+  setReminderMinutes(30);
+  document.getElementById('cf-enabled').checked = true;
+  document.getElementById('cf-preview').style.display = 'none';
+  populateCalendarGroupField('');
+  document.getElementById('calendar-modal').classList.add('open');
+}
+
+function openEditCalendarModal(id) {
+  const job = calendarJobs.find(j => j.id === id);
+  if (!job) return;
+  editingCalendarId = id;
+  document.getElementById('cal-modal-title').textContent = '编辑日历提醒';
+  document.getElementById('cf-id').value = job.id;
+  document.getElementById('cf-url').value = job.calendarUrl;
+  setReminderMinutes(job.minutesBefore);
+  document.getElementById('cf-enabled').checked = job.enabled;
+  document.getElementById('cf-preview').style.display = 'none';
+  populateCalendarGroupField(job.groupName);
+  document.getElementById('calendar-modal').classList.add('open');
+}
+
+function closeCalendarModal() {
+  document.getElementById('calendar-modal').classList.remove('open');
+}
+
+document.getElementById('calendar-modal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeCalendarModal();
+});
+
+async function populateCalendarGroupField(currentValue) {
+  const sel = document.getElementById('cf-group-select');
+  const txt = document.getElementById('cf-group-text');
+  const helper = document.getElementById('cf-group-helper');
+  try {
+    const res = await fetch('/api/groups');
+    const { groups, ready } = await res.json();
+    if (ready && groups.length > 0) {
+      sel.innerHTML = groups.map(g =>
+        `<option value="${escHtml(g)}" ${g === currentValue ? 'selected' : ''}>${escHtml(g)}</option>`
+      ).join('');
+      if (currentValue && !groups.includes(currentValue)) {
+        sel.innerHTML = `<option value="${escHtml(currentValue)}" selected>${escHtml(currentValue)}</option>` + sel.innerHTML;
+      }
+      sel.style.display = 'block';
+      txt.style.display = 'none';
+      helper.textContent = `共找到 ${groups.length} 个群组`;
+    } else {
+      sel.style.display = 'none';
+      txt.style.display = 'block';
+      txt.value = currentValue || '';
+      helper.textContent = ready ? '未找到群组（请确认账号已加入群组）' : 'WhatsApp 未连接，请手动输入群组名称';
+    }
+  } catch {
+    sel.style.display = 'none';
+    txt.style.display = 'block';
+    txt.value = currentValue || '';
+  }
+}
+
+function getCalendarGroupValue() {
+  const sel = document.getElementById('cf-group-select');
+  const txt = document.getElementById('cf-group-text');
+  return sel.style.display !== 'none' ? sel.value : txt.value.trim();
+}
+
+async function previewCalendar() {
+  const url = document.getElementById('cf-url').value.trim();
+  const preview = document.getElementById('cf-preview');
+  if (!url) { showToast('请先输入 ICS 链接'); return; }
+  preview.innerHTML = '<span style="color:#999;font-size:13px">正在获取日历...</span>';
+  preview.style.display = 'block';
+  try {
+    const res = await fetch('/api/calendar-preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      preview.innerHTML = `<div class="alert alert-warning">❌ ${escHtml(data.error)}</div>`;
+      return;
+    }
+    if (!data.events.length) {
+      preview.innerHTML = '<div class="alert alert-success">✅ 链接有效，但没有找到近期事件</div>';
+      return;
+    }
+    preview.innerHTML = `
+      <div class="alert alert-success">
+        ✅ 链接有效，近期事件：
+        ${data.events.map(e => `<br>• <strong>${escHtml(e.title)}</strong> — ${escHtml(e.start)}`).join('')}
+      </div>
+    `;
+  } catch {
+    preview.innerHTML = '<div class="alert alert-warning">❌ 请求失败，请检查网络</div>';
+  }
+}
+
+async function saveCalendarJob() {
+  const id = document.getElementById('cf-id').value.trim();
+  const calendarUrl = document.getElementById('cf-url').value.trim();
+  const minutesBefore = getReminderMinutes();
+  const groupName = getCalendarGroupValue();
+  const enabled = document.getElementById('cf-enabled').checked;
+
+  if (!id) { showToast('请填写任务名称'); return; }
+  if (!calendarUrl) { showToast('请填写 ICS 链接'); return; }
+  if (!groupName) { showToast('请填写群组名称'); return; }
+  if (!minutesBefore) { showToast('请输入有效的提醒时间（至少 1 分钟）'); return; }
+  if (!editingCalendarId && calendarJobs.some(j => j.id === id)) {
+    showToast('任务名称已存在，请换一个'); return;
+  }
+
+  const job = { id, calendarUrl, minutesBefore, groupName, enabled };
+  await fetch('/api/calendar-jobs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(job),
+  });
+  await loadCalendarJobs();
+  closeCalendarModal();
+  showToast(editingCalendarId ? '任务已更新' : '任务已添加');
+}
+
+loadCalendarJobs();
 </script>
 </body>
 </html>

@@ -27,10 +27,12 @@ const { createClient } = require('./client');
 const { loadJobs, reloadJobs, stopAllJobs } = require('./scheduler');
 const { listAllGroups } = require('./groupResolver');
 const { startWebUI } = require('./webui');
+const { startCalendarScheduler } = require('./calendarScheduler');
 
 console.log('=== WhatsApp 定时消息机器人启动中 ===\n');
 
 startWebUI();
+startCalendarScheduler();
 
 global.whatsappReady = false;
 global.whatsappClient = null;

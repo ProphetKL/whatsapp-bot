@@ -162,6 +162,72 @@ function startWebUI(port) {
     }
   });
 
+  // ── 日历提醒任务 API ──────────────────────────────────
+
+  app.get('/api/calendar-jobs', (req, res) => {
+    try {
+      const config = readConfig();
+      res.json(config.calendarJobs || []);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/calendar-jobs', (req, res) => {
+    try {
+      const config = readConfig();
+      if (!config.calendarJobs) config.calendarJobs = [];
+      const job = req.body;
+      const idx = config.calendarJobs.findIndex(j => j.id === job.id);
+      if (idx >= 0) config.calendarJobs[idx] = job;
+      else config.calendarJobs.push(job);
+      writeConfig(config);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete('/api/calendar-jobs/:id', (req, res) => {
+    try {
+      const config = readConfig();
+      config.calendarJobs = (config.calendarJobs || []).filter(j => j.id !== req.params.id);
+      writeConfig(config);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 验证 ICS 链接并预览近期事件
+  app.post('/api/calendar-preview', async (req, res) => {
+    const { url } = req.body;
+    if (!url) return res.status(400).json({ ok: false, error: '请提供 URL' });
+    if (!url.endsWith('.ics') && !url.includes('basic.ics') && !url.includes('ical')) {
+      return res.json({ ok: false, error: '链接格式不正确，应以 .ics 结尾。请在 Google 日历 → 设置 → 整合日历 → 复制「iCal 格式的公开地址」' });
+    }
+    try {
+      const ical = require('node-ical');
+      const events = await ical.async.fromURL(url);
+      const allEntries = Object.values(events);
+      if (allEntries.length === 0) {
+        return res.json({ ok: false, error: '该链接未返回任何日历数据，请确认日历已设为「公开」，并使用 iCal 格式地址（.ics 结尾）' });
+      }
+      const now = Date.now();
+      const upcoming = allEntries
+        .filter(e => e.type === 'VEVENT' && e.start && new Date(e.start).getTime() >= now - 24 * 60 * 60 * 1000)
+        .sort((a, b) => new Date(a.start) - new Date(b.start))
+        .slice(0, 5)
+        .map(e => ({
+          title: e.summary || '(无标题)',
+          start: new Date(e.start).toLocaleString('zh-CN', { timeZone: 'Asia/Hong_Kong' }),
+        }));
+      res.json({ ok: true, events: upcoming });
+    } catch (err) {
+      res.status(400).json({ ok: false, error: '无法获取日历：' + err.message });
+    }
+  });
+
   app.listen(port, () => {
     console.log(`[WebUI] 管理界面已启动：http://localhost:${port}`);
   });
