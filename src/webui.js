@@ -227,15 +227,30 @@ function startWebUI(port) {
         return res.json({ ok: false, error: '该链接未返回任何日历数据，请确认日历已设为「公开」，并使用 iCal 格式地址（.ics 结尾）' });
       }
       const now = Date.now();
-      const upcoming = allEntries
-        .filter(e => e.type === 'VEVENT' && e.start && new Date(e.start).getTime() >= now - 24 * 60 * 60 * 1000)
-        .sort((a, b) => new Date(a.start) - new Date(b.start))
-        .slice(0, 5)
-        .map(e => ({
-          title: e.summary || '(无标题)',
-          start: new Date(e.start).toLocaleString('zh-CN', { timeZone: 'Asia/Hong_Kong' }),
-        }));
-      res.json({ ok: true, events: upcoming });
+      const windowEnd = now + 30 * 24 * 60 * 60 * 1000; // 未来 30 天
+      const windowStart = now - 24 * 60 * 60 * 1000;    // 往前 24 小时
+      const upcoming = [];
+      for (const e of allEntries) {
+        if (e.type !== 'VEVENT' || !e.start) continue;
+        if (e.rrule) {
+          // 重复事件：展开未来 30 天内的所有发生日期
+          const occurrences = e.rrule.between(new Date(windowStart), new Date(windowEnd));
+          for (const occ of occurrences) {
+            upcoming.push({ title: e.summary || '(无标题)', start: occ });
+          }
+        } else {
+          const startMs = new Date(e.start).getTime();
+          if (startMs >= windowStart) {
+            upcoming.push({ title: e.summary || '(无标题)', start: new Date(e.start) });
+          }
+        }
+      }
+      upcoming.sort((a, b) => a.start - b.start);
+      const result = upcoming.slice(0, 5).map(e => ({
+        title: e.title,
+        start: e.start.toLocaleString('zh-CN', { timeZone: 'Asia/Hong_Kong' }),
+      }));
+      res.json({ ok: true, events: result });
     } catch (err) {
       res.status(400).json({ ok: false, error: '无法获取日历：' + err.message });
     }

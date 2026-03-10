@@ -27,10 +27,24 @@ async function checkJob(job) {
   const now = Date.now();
   const reminderMs = (job.minutesBefore || 30) * 60 * 1000;
 
+  // 展开所有事件（含重复事件的各次发生日期）
+  const instances = [];
   for (const ev of Object.values(events)) {
     if (ev.type !== 'VEVENT' || !ev.start) continue;
+    if (ev.rrule) {
+      // 重复事件：找出下一个轮询窗口内需要提醒的发生日期
+      const searchStart = new Date(now - reminderMs - 60_000);
+      const searchEnd = new Date(now - reminderMs + POLL_INTERVAL_MS + 60_000);
+      const occurrences = ev.rrule.between(searchStart, searchEnd);
+      for (const occ of occurrences) {
+        instances.push({ ev, startMs: occ.getTime() });
+      }
+    } else {
+      instances.push({ ev, startMs: new Date(ev.start).getTime() });
+    }
+  }
 
-    const startMs = new Date(ev.start).getTime();
+  for (const { ev, startMs } of instances) {
     const reminderAt = startMs - reminderMs;
     const msUntil = reminderAt - now;
 
