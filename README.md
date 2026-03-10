@@ -28,7 +28,7 @@
 ## 一键安装
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ProphetKL/whatsapp-bot/main/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/ProphetKL/whatsapp-bot/main/install.sh -o install.sh && sudo bash install.sh
 ```
 
 脚本自动完成：检查系统 → 安装依赖 → 安装 Node.js → 安装 PM2 → 下载项目 → **强制设置用户名密码** → 启动 → 配置开机自启 → 开放防火墙端口
