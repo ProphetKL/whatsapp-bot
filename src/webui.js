@@ -7,9 +7,21 @@ const { reloadJobs } = require('./scheduler');
 const CONFIG_PATH = path.join(__dirname, '..', 'config', 'schedules.json');
 const PUBLIC_PATH = path.join(__dirname, '..', 'public');
 
+const DEFAULT_CONFIG = {
+  settings: { timezone: 'Asia/Hong_Kong', groupResolveCacheMinutes: 60 },
+  jobs: [],
+  calendarJobs: [],
+};
+
 function readConfig() {
-  const raw = fs.readFileSync(CONFIG_PATH, 'utf-8');
-  return JSON.parse(raw);
+  if (!fs.existsSync(CONFIG_PATH)) {
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(DEFAULT_CONFIG, null, 2), 'utf-8');
+    return DEFAULT_CONFIG;
+  }
+  const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
+  // 兼容旧版本：补全缺少的字段
+  if (!config.calendarJobs) config.calendarJobs = [];
+  return config;
 }
 
 function writeConfig(data) {

@@ -1,6 +1,9 @@
 # WhatsApp 登录会话（含认证 token，绝不能提交）
 data/
 
+# 用户任务配置（含个人数据，不跟踪变更）
+config/schedules.json
+
 # Node 依赖（各自安装）
 node_modules/
 
