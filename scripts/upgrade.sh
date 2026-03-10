@@ -4,7 +4,7 @@
 
 set -e
 
-BOT_DIR=/opt/whatsapp-bot/cloud
+BOT_DIR=/opt/whatsapp-bot
 cd "$BOT_DIR"
 
 echo "========================================"
