@@ -1,0 +1,22 @@
+# WhatsApp 登录会话（含认证 token，绝不能提交）
+data/
+
+# Node 依赖（各自安装）
+node_modules/
+
+# 环境变量（含密码，绝不能提交）
+.env
+
+# PM2 日志
+*.log
+logs/
+
+# Bot PID 文件
+.bot.pid
+
+# macOS 元数据
+.DS_Store
+
+# 编辑器
+.vscode/
+.idea/

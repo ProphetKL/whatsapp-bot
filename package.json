@@ -1,0 +1,23 @@
+{
+  "name": "whatsapp-scheduler-bot-cloud",
+  "version": "1.0.0",
+  "description": "WhatsApp 群组自动定时发消息机器人（云服务器版）",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "pm2:start": "pm2 start ecosystem.config.js",
+    "pm2:stop": "pm2 stop whatsapp-bot",
+    "pm2:restart": "pm2 restart whatsapp-bot",
+    "pm2:logs": "pm2 logs whatsapp-bot"
+  },
+  "dependencies": {
+    "whatsapp-web.js": "^1.26.0",
+    "node-cron": "^3.0.3",
+    "express": "^4.18.2",
+    "qrcode": "^1.5.3",
+    "dotenv": "^16.4.5"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

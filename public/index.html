@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WhatsApp 定时消息管理</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; color: #1a1a1a; }
+
+    header {
+      background: #25d366;
+      color: white;
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    }
+    header h1 { font-size: 20px; font-weight: 600; }
+    #status-badge {
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 13px;
+      font-weight: 500;
+      background: rgba(255,255,255,0.25);
+    }
+    #status-badge.ready { background: #128c7e; }
+
+    main { max-width: 860px; margin: 28px auto; padding: 0 16px; }
+
+    .card {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
+      overflow: hidden;
+    }
+    .card-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid #f0f0f0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .card-header h2 { font-size: 16px; font-weight: 600; }
+    .card-body { padding: 20px; }
+
+    .job-list { display: flex; flex-direction: column; gap: 12px; }
+    .job-item {
+      border: 1px solid #e8e8e8;
+      border-radius: 8px;
+      padding: 14px 16px;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      transition: border-color 0.2s;
+    }
+    .job-item:hover { border-color: #25d366; }
+    .job-item.disabled { opacity: 0.5; }
+
+    .toggle { position: relative; width: 40px; height: 22px; flex-shrink: 0; margin-top: 2px; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute; inset: 0;
+      background: #ccc; border-radius: 22px; cursor: pointer;
+      transition: background 0.2s;
+    }
+    .toggle-slider::before {
+      content: ''; position: absolute;
+      width: 16px; height: 16px; border-radius: 50%;
+      background: white; left: 3px; top: 3px;
+      transition: transform 0.2s;
+    }
+    .toggle input:checked + .toggle-slider { background: #25d366; }
+    .toggle input:checked + .toggle-slider::before { transform: translateX(18px); }
+
+    .job-info { flex: 1; min-width: 0; }
+    .job-title { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+    .job-meta { font-size: 13px; color: #666; display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
+    .tag {
+      background: #f0f9f4; color: #128c7e;
+      padding: 2px 8px; border-radius: 4px; font-size: 12px;
+    }
+    .job-message { font-size: 13px; color: #444; background: #fafafa; border-radius: 6px; padding: 8px 10px; white-space: pre-wrap; word-break: break-word; }
+
+    .job-actions { display: flex; gap: 8px; flex-shrink: 0; }
+    .btn { padding: 6px 14px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; font-weight: 500; transition: opacity 0.15s; }
+    .btn:hover { opacity: 0.8; }
+    .btn-primary { background: #25d366; color: white; }
+    .btn-secondary { background: #f0f0f0; color: #333; }
+    .btn-danger { background: #ff4d4f; color: white; }
+    .btn-sm { padding: 4px 10px; font-size: 12px; }
+
+    .empty-state { text-align: center; padding: 40px; color: #999; }
+    .empty-state svg { margin-bottom: 12px; opacity: 0.4; }
+
+    /* QR 登录卡片 */
+    #qr-card { text-align: center; }
+    #qr-card p { color: #555; margin-bottom: 16px; font-size: 14px; line-height: 1.6; }
+    #qr-img { width: 220px; height: 220px; border: 1px solid #e0e0e0; border-radius: 8px; display: block; margin: 0 auto 16px; }
+    #qr-loading { color: #999; font-size: 14px; padding: 60px 0; }
+    .steps { text-align: left; display: inline-block; margin-top: 8px; }
+    .steps li { font-size: 13px; color: #666; margin-bottom: 4px; }
+
+    /* 弹窗 */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.45); z-index: 100;
+      align-items: center; justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: white; border-radius: 12px; width: 100%; max-width: 520px;
+      max-height: 90vh; overflow-y: auto; margin: 16px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+    }
+    .modal-header {
+      padding: 18px 20px 14px;
+      border-bottom: 1px solid #f0f0f0;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .modal-header h3 { font-size: 16px; font-weight: 600; }
+    .modal-close { background: none; border: none; font-size: 20px; cursor: pointer; color: #999; line-height: 1; }
+    .modal-body { padding: 20px; }
+    .modal-footer { padding: 14px 20px; border-top: 1px solid #f0f0f0; display: flex; justify-content: flex-end; gap: 8px; }
+
+    .form-group { margin-bottom: 18px; }
+    label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; color: #333; }
+    input[type=text], input[type=time], textarea, select {
+      width: 100%; padding: 9px 12px; border: 1px solid #d9d9d9;
+      border-radius: 7px; font-size: 14px; outline: none;
+      transition: border-color 0.2s;
+      font-family: inherit;
+    }
+    input:focus, textarea:focus, select:focus { border-color: #25d366; }
+    textarea { resize: vertical; min-height: 80px; }
+
+    .time-row { display: flex; gap: 12px; }
+    .time-row .form-group { flex: 1; }
+
+    .repeat-type { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+    .repeat-btn {
+      padding: 6px 14px; border-radius: 6px; border: 1px solid #d9d9d9;
+      cursor: pointer; font-size: 13px; background: white; color: #555;
+      transition: all 0.15s;
+    }
+    .repeat-btn.active { background: #25d366; color: white; border-color: #25d366; }
+
+    .weekday-picker { display: flex; gap: 6px; flex-wrap: wrap; }
+    .day-btn {
+      width: 36px; height: 36px; border-radius: 50%; border: 1px solid #d9d9d9;
+      cursor: pointer; font-size: 13px; font-weight: 500; background: white; color: #555;
+      transition: all 0.15s; display: flex; align-items: center; justify-content: center;
+    }
+    .day-btn.active { background: #25d366; color: white; border-color: #25d366; }
+
+    .monthday-picker { display: flex; flex-wrap: wrap; gap: 4px; }
+    .mday-btn {
+      width: 32px; height: 32px; border-radius: 6px; border: 1px solid #d9d9d9;
+      cursor: pointer; font-size: 12px; background: white; color: #555;
+      transition: all 0.15s; display: flex; align-items: center; justify-content: center;
+    }
+    .mday-btn.active { background: #25d366; color: white; border-color: #25d366; }
+
+    .helper { font-size: 12px; color: #999; margin-top: 4px; }
+    .alert { padding: 10px 14px; border-radius: 7px; margin-bottom: 16px; font-size: 13px; }
+    .alert-warning { background: #fff7e6; border: 1px solid #ffd591; color: #873800; }
+    .alert-success { background: #f6ffed; border: 1px solid #b7eb8f; color: #135200; }
+
+    #toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      background: #333; color: white; padding: 10px 20px; border-radius: 8px;
+      font-size: 14px; z-index: 200; opacity: 0; pointer-events: none;
+      transition: opacity 0.3s;
+    }
+    #toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>📱 WhatsApp 定时消息管理</h1>
+  <div style="display:flex;align-items:center;gap:12px;">
+    <span id="status-badge">⏳ 正在连接...</span>
+    <button id="logout-btn" class="btn" style="display:none;background:rgba(255,255,255,0.2);color:white;font-size:13px;" onclick="doLogout()">切换账号</button>
+  </div>
+</header>
+
+<main>
+  <!-- QR 登录卡片（未连接时显示） -->
+  <div class="card" id="qr-card" style="display:none">
+    <div class="card-header"><h2>扫码登录 WhatsApp</h2></div>
+    <div class="card-body" id="qr-card-body">
+      <div id="qr-loading">正在生成 QR 码，请稍候...</div>
+    </div>
+  </div>
+
+  <!-- 任务列表（已连接时显示） -->
+  <div class="card" id="jobs-card" style="display:none">
+    <div class="card-header">
+      <h2>定时任务列表</h2>
+      <button class="btn btn-primary" onclick="openAddModal()">＋ 新增任务</button>
+    </div>
+    <div class="card-body">
+      <div id="job-list" class="job-list">
+        <div class="empty-state">加载中...</div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- 新增/编辑弹窗 -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modal-title">新增定时任务</h3>
+      <button class="modal-close" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="whatsapp-warning" class="alert alert-warning" style="display:none">
+        ⚠️ WhatsApp 尚未连接，群组列表不可用。连接后可下拉选择群组名。
+      </div>
+
+      <div class="form-group">
+        <label>任务名称（仅用于识别）</label>
+        <input type="text" id="f-id" placeholder="例：早晨提醒" />
+      </div>
+
+      <div class="form-group">
+        <label>群组名称</label>
+        <select id="f-group-select" style="display:none"></select>
+        <input type="text" id="f-group-text" placeholder="必须与 WhatsApp 群组名完全一致" />
+        <div class="helper" id="f-group-helper">区分大小写，启动后终端会列出所有群组名供参考</div>
+      </div>
+
+      <div class="form-group">
+        <label>消息内容</label>
+        <textarea id="f-message" placeholder="在这里输入要发送的消息...&#10;支持 WhatsApp 格式：*粗体*、_斜体_"></textarea>
+      </div>
+
+      <div class="form-group">
+        <label>发送时间</label>
+        <input type="time" id="f-time" value="09:00" />
+      </div>
+
+      <div class="form-group">
+        <label>重复方式</label>
+        <div class="repeat-type">
+          <button class="repeat-btn active" data-type="daily" onclick="setRepeat('daily')">每天</button>
+          <button class="repeat-btn" data-type="today" onclick="setRepeat('today')">今天（单次）</button>
+          <button class="repeat-btn" data-type="weekly" onclick="setRepeat('weekly')">每周指定日</button>
+          <button class="repeat-btn" data-type="monthly" onclick="setRepeat('monthly')">每月指定日</button>
+          <button class="repeat-btn" data-type="once" onclick="setRepeat('once')">指定日期（单次）</button>
+        </div>
+
+        <!-- 每周 -->
+        <div id="r-weekly" style="display:none">
+          <div class="weekday-picker" id="weekday-picker">
+            <button class="day-btn" data-d="1">一</button>
+            <button class="day-btn" data-d="2">二</button>
+            <button class="day-btn" data-d="3">三</button>
+            <button class="day-btn" data-d="4">四</button>
+            <button class="day-btn" data-d="5">五</button>
+            <button class="day-btn" data-d="6">六</button>
+            <button class="day-btn" data-d="0">日</button>
+          </div>
+        </div>
+
+        <!-- 每月 -->
+        <div id="r-monthly" style="display:none">
+          <div class="monthday-picker" id="monthday-picker"></div>
+        </div>
+
+        <!-- 指定日期 / 今天 -->
+        <div id="r-once" style="display:none">
+          <div id="today-display" style="display:none;padding:9px 12px;background:#f6ffed;border:1px solid #b7eb8f;border-radius:7px;font-size:14px;color:#135200;"></div>
+          <input type="date" id="f-date" style="width:100%;padding:9px 12px;border:1px solid #d9d9d9;border-radius:7px;font-size:14px;cursor:pointer;" />
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <label class="toggle">
+            <input type="checkbox" id="f-enabled" checked />
+            <span class="toggle-slider"></span>
+          </label>
+          立即启用此任务
+        </label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal()">取消</button>
+      <button class="btn btn-primary" onclick="saveJob()">保存</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+let config = { settings: { timezone: 'Asia/Hong_Kong', groupResolveCacheMinutes: 60 }, jobs: [] };
+let editingIndex = -1;
+let repeatType = 'daily';
+let selectedWeekdays = [];
+let selectedMonthdays = [];
+
+// 初始化每月日期按钮
+const mPicker = document.getElementById('monthday-picker');
+for (let d = 1; d <= 31; d++) {
+  const b = document.createElement('button');
+  b.className = 'mday-btn'; b.textContent = d; b.dataset.d = d;
+  b.onclick = () => {
+    b.classList.toggle('active');
+    const idx = selectedMonthdays.indexOf(d);
+    if (idx === -1) selectedMonthdays.push(d); else selectedMonthdays.splice(idx, 1);
+    selectedMonthdays.sort((a, b) => a - b);
+  };
+  mPicker.appendChild(b);
+}
+
+// 星期按钮
+document.querySelectorAll('#weekday-picker .day-btn').forEach(btn => {
+  btn.onclick = () => {
+    btn.classList.toggle('active');
+    const d = Number(btn.dataset.d);
+    const idx = selectedWeekdays.indexOf(d);
+    if (idx === -1) selectedWeekdays.push(d); else selectedWeekdays.splice(idx, 1);
+    selectedWeekdays.sort((a, b) => a - b);
+  };
+});
+
+function todayStr() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function setRepeat(type) {
+  repeatType = type;
+  document.querySelectorAll('.repeat-btn').forEach(b => b.classList.toggle('active', b.dataset.type === type));
+  document.getElementById('r-weekly').style.display = type === 'weekly' ? 'block' : 'none';
+  document.getElementById('r-monthly').style.display = type === 'monthly' ? 'block' : 'none';
+
+  const onceDiv = document.getElementById('r-once');
+  const dateInput = document.getElementById('f-date');
+  const todayDisplay = document.getElementById('today-display');
+
+  if (type === 'today') {
+    onceDiv.style.display = 'block';
+    const t = todayStr();
+    dateInput.value = t;
+    dateInput.style.display = 'none';
+    const [y, mo, day] = t.split('-');
+    todayDisplay.textContent = `📅 今天：${y} 年 ${mo} 月 ${day} 日`;
+    todayDisplay.style.display = 'block';
+  } else if (type === 'once') {
+    onceDiv.style.display = 'block';
+    todayDisplay.style.display = 'none';
+    dateInput.style.display = 'block';
+    if (!dateInput.value) dateInput.value = todayStr();
+  } else {
+    onceDiv.style.display = 'none';
+  }
+}
+
+function cronToUi(cron) {
+  const parts = cron.trim().split(/\s+/);
+  if (parts.length !== 5) return null;
+  const [min, hour, dom, , dow] = parts;
+  const time = `${hour.padStart(2,'0')}:${min.padStart(2,'0')}`;
+  if (dow !== '*') {
+    const days = dow.split(',').map(Number);
+    return { type: 'weekly', time, days, mdays: [] };
+  }
+  if (dom !== '*') {
+    const mdays = dom.split(',').map(Number);
+    return { type: 'monthly', time, days: [], mdays };
+  }
+  return { type: 'daily', time, days: [], mdays: [] };
+}
+
+function uiToCron() {
+  const [hh, mm] = document.getElementById('f-time').value.split(':');
+  const h = parseInt(hh), m = parseInt(mm);
+  if (repeatType === 'daily') return `${m} ${h} * * *`;
+  if (repeatType === 'weekly') {
+    if (!selectedWeekdays.length) { showToast('请至少选择一天'); return null; }
+    return `${m} ${h} * * ${selectedWeekdays.join(',')}`;
+  }
+  if (repeatType === 'monthly') {
+    if (!selectedMonthdays.length) { showToast('请至少选择一个日期'); return null; }
+    return `${m} ${h} ${selectedMonthdays.join(',')} * *`;
+  }
+  if (repeatType === 'today') {
+    const d = todayStr();
+    const [y, mo, day] = d.split('-');
+    return `${m} ${h} ${parseInt(day)} ${parseInt(mo)} *`;
+  }
+  if (repeatType === 'once') {
+    const d = document.getElementById('f-date').value;
+    if (!d) { showToast('请选择日期'); return null; }
+    const [y, mo, day] = d.split('-');
+    return `${m} ${h} ${parseInt(day)} ${parseInt(mo)} *`;
+  }
+  return null;
+}
+
+function cronLabel(cron) {
+  const parts = cron.trim().split(/\s+/);
+  if (parts.length !== 5) return cron;
+  const [min, hour, dom, month, dow] = parts;
+  const t = `${hour.padStart(2,'0')}:${min.padStart(2,'0')}`;
+  const dayNames = ['日','一','二','三','四','五','六'];
+  if (dow !== '*') {
+    const days = dow.split(',').map(n => '周' + dayNames[Number(n)]).join(' ');
+    return `${days}  ${t}`;
+  }
+  if (dom !== '*' && month !== '*') {
+    const now = new Date();
+    const isToday = parseInt(dom) === now.getDate() && parseInt(month) === (now.getMonth() + 1);
+    return `${month}月${dom}日  ${t}（单次${isToday ? ' · 今天' : ''}）`;
+  }
+  if (dom !== '*') return `每月 ${dom} 日  ${t}`;
+  return `每天  ${t}`;
+}
+
+async function loadConfig() {
+  const res = await fetch('/api/config');
+  config = await res.json();
+  renderJobs();
+}
+
+async function checkStatus() {
+  const res = await fetch('/api/status');
+  const { ready, hasQR } = await res.json();
+  const badge = document.getElementById('status-badge');
+  badge.textContent = ready ? '✅ 已连接' : (hasQR ? '📷 请扫码登录' : '⏳ 正在初始化...');
+  badge.className = ready ? 'status-badge ready' : 'status-badge';
+
+  const qrCard = document.getElementById('qr-card');
+  const jobsCard = document.getElementById('jobs-card');
+
+  document.getElementById('logout-btn').style.display = ready ? 'block' : 'none';
+
+  if (ready) {
+    qrCard.style.display = 'none';
+    jobsCard.style.display = 'block';
+    const warn = document.getElementById('whatsapp-warning');
+    if (warn) warn.style.display = 'none';
+  } else {
+    jobsCard.style.display = 'none';
+    qrCard.style.display = 'block';
+    const warn = document.getElementById('whatsapp-warning');
+    if (warn) warn.style.display = 'block';
+
+    if (hasQR) {
+      // 显示 QR 图片
+      document.getElementById('qr-card-body').innerHTML = `
+        <p>请用手机打开 WhatsApp →「已连接的设备」→「连接设备」→ 扫描下方二维码</p>
+        <img id="qr-img" src="/api/qr?t=${Date.now()}" alt="WhatsApp QR 码" />
+        <ol class="steps">
+          <li>打开手机 WhatsApp</li>
+          <li>点击右上角 ⋮ → 已连接的设备</li>
+          <li>点击「连接设备」</li>
+          <li>扫描上方二维码</li>
+        </ol>
+      `;
+    } else {
+      document.getElementById('qr-card-body').innerHTML = `<div id="qr-loading">正在初始化，QR 码将在几秒内显示...</div>`;
+    }
+  }
+}
+
+function renderJobs() {
+  const list = document.getElementById('job-list');
+  if (!config.jobs.length) {
+    list.innerHTML = '<div class="empty-state"><p>还没有任务，点击右上角"新增任务"开始吧</p></div>';
+    return;
+  }
+  list.innerHTML = config.jobs.map((job, i) => `
+    <div class="job-item ${job.enabled ? '' : 'disabled'}">
+      <label class="toggle">
+        <input type="checkbox" ${job.enabled ? 'checked' : ''} onchange="toggleJob(${i}, this.checked)" />
+        <span class="toggle-slider"></span>
+      </label>
+      <div class="job-info">
+        <div class="job-title">${escHtml(job.id)}</div>
+        <div class="job-meta">
+          <span class="tag">📌 ${escHtml(job.groupName)}</span>
+          <span class="tag">🕐 ${cronLabel(job.schedule)}</span>
+        </div>
+        <div class="job-message">${escHtml(job.message)}</div>
+      </div>
+      <div class="job-actions">
+        <button class="btn btn-secondary btn-sm" onclick="openEditModal(${i})">编辑</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteJob(${i})">删除</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+async function toggleJob(i, enabled) {
+  config.jobs[i].enabled = enabled;
+  await saveConfig();
+  renderJobs();
+}
+
+async function deleteJob(i) {
+  if (!confirm(`确定删除任务"${config.jobs[i].id}"吗？`)) return;
+  config.jobs.splice(i, 1);
+  await saveConfig();
+  renderJobs();
+  showToast('任务已删除');
+}
+
+async function populateGroupField(currentValue) {
+  const sel = document.getElementById('f-group-select');
+  const txt = document.getElementById('f-group-text');
+  const helper = document.getElementById('f-group-helper');
+  try {
+    const res = await fetch('/api/groups');
+    const { groups, ready } = await res.json();
+    if (ready && groups.length > 0) {
+      sel.innerHTML = groups.map(g =>
+        `<option value="${escHtml(g)}" ${g === currentValue ? 'selected' : ''}>${escHtml(g)}</option>`
+      ).join('');
+      if (currentValue && !groups.includes(currentValue)) {
+        sel.innerHTML = `<option value="${escHtml(currentValue)}" selected>${escHtml(currentValue)}</option>` + sel.innerHTML;
+      }
+      sel.style.display = 'block';
+      txt.style.display = 'none';
+      helper.textContent = `共找到 ${groups.length} 个群组`;
+    } else {
+      sel.style.display = 'none';
+      txt.style.display = 'block';
+      txt.value = currentValue || '';
+      if (!ready) {
+        helper.textContent = 'WhatsApp 未连接，请手动输入群组名称';
+      } else {
+        helper.textContent = '未找到群组（请确认账号已加入群组，或稍等片刻再打开此弹窗）';
+      }
+    }
+  } catch {
+    sel.style.display = 'none';
+    txt.style.display = 'block';
+    txt.value = currentValue || '';
+  }
+}
+
+function getGroupValue() {
+  const sel = document.getElementById('f-group-select');
+  const txt = document.getElementById('f-group-text');
+  return sel.style.display !== 'none' ? sel.value : txt.value.trim();
+}
+
+function openAddModal() {
+  editingIndex = -1;
+  document.getElementById('modal-title').textContent = '新增定时任务';
+  document.getElementById('f-id').value = '';
+  document.getElementById('f-message').value = '';
+  document.getElementById('f-time').value = '09:00';
+  document.getElementById('f-enabled').checked = true;
+  setRepeat('daily');
+  resetPickers();
+  document.getElementById('modal').classList.add('open');
+  populateGroupField('');
+}
+
+function openEditModal(i) {
+  editingIndex = i;
+  const job = config.jobs[i];
+  document.getElementById('modal-title').textContent = '编辑任务';
+  document.getElementById('f-id').value = job.id;
+  document.getElementById('f-message').value = job.message;
+  document.getElementById('f-enabled').checked = job.enabled;
+  populateGroupField(job.groupName);
+
+  const ui = cronToUi(job.schedule);
+  resetPickers();
+  if (ui) {
+    document.getElementById('f-time').value = ui.time;
+    setRepeat(ui.type);
+    if (ui.type === 'weekly') {
+      selectedWeekdays = [...ui.days];
+      document.querySelectorAll('#weekday-picker .day-btn').forEach(b => {
+        b.classList.toggle('active', selectedWeekdays.includes(Number(b.dataset.d)));
+      });
+    }
+    if (ui.type === 'monthly') {
+      selectedMonthdays = [...ui.mdays];
+      document.querySelectorAll('#monthday-picker .mday-btn').forEach(b => {
+        b.classList.toggle('active', selectedMonthdays.includes(Number(b.dataset.d)));
+      });
+    }
+  }
+  document.getElementById('modal').classList.add('open');
+}
+
+function resetPickers() {
+  selectedWeekdays = [];
+  selectedMonthdays = [];
+  document.querySelectorAll('#weekday-picker .day-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('#monthday-picker .mday-btn').forEach(b => b.classList.remove('active'));
+}
+
+function closeModal() {
+  document.getElementById('modal').classList.remove('open');
+}
+
+async function saveJob() {
+  const id = document.getElementById('f-id').value.trim();
+  const groupName = getGroupValue();
+  const message = document.getElementById('f-message').value.trim();
+  const enabled = document.getElementById('f-enabled').checked;
+
+  if (!id) { showToast('请填写任务名称'); return; }
+  if (!groupName) { showToast('请填写群组名称'); return; }
+  if (!message) { showToast('请填写消息内容'); return; }
+
+  const schedule = uiToCron();
+  if (!schedule) return;
+
+  const job = { id, enabled, groupName, schedule, message };
+
+  if (editingIndex === -1) {
+    // 检查 id 重复
+    if (config.jobs.some(j => j.id === id)) { showToast('任务名称已存在，请换一个'); return; }
+    config.jobs.push(job);
+  } else {
+    config.jobs[editingIndex] = job;
+  }
+
+  await saveConfig();
+  renderJobs();
+  closeModal();
+  showToast(editingIndex === -1 ? '任务已添加' : '任务已更新');
+}
+
+async function saveConfig() {
+  await fetch('/api/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config),
+  });
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// 点击遮罩关闭
+document.getElementById('modal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeModal();
+});
+
+async function doLogout() {
+  if (!confirm('确定要登出当前 WhatsApp 账号吗？\n登出后需要重新扫码才能使用。')) return;
+  document.getElementById('logout-btn').style.display = 'none';
+  try {
+    await fetch('/api/logout', { method: 'POST' });
+    showToast('已登出，请稍候扫码重新登录...');
+  } catch {
+    showToast('登出请求失败，请检查连接');
+  }
+}
+
+// 初始化
+loadConfig();
+checkStatus();
+setInterval(checkStatus, 5000);
+</script>
+</body>
+</html>
