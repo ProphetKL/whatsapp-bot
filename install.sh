@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ── 配置（发布前修改为你的 GitHub 地址）────────────────
+# ── 配置 ──────────────────────────────────────────────
 REPO_URL="https://github.com/ProphetKL/whatsapp-bot.git"
 INSTALL_DIR="/opt/whatsapp-bot"
 PM2_APP_NAME="whatsapp-bot"
@@ -11,7 +11,7 @@ RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC
 info()  { echo -e "${GREEN}[✓]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[!]${NC} $*"; }
 step()  { echo -e "\n${BLUE}──────────────────────────────────────${NC}"; echo -e "${BLUE}  $*${NC}"; echo -e "${BLUE}──────────────────────────────────────${NC}"; }
-abort() { echo -e "\n${RED}[✗] 安装失败：$*${NC}\n"; exit 1; }
+abort() { echo -e "\n${RED}[✗] 失败：$*${NC}\n"; exit 1; }
 
 clear
 echo ""
@@ -22,7 +22,7 @@ echo ""
 
 # ── 检查：必须 root ───────────────────────────────────
 if [[ $EUID -ne 0 ]]; then
-  abort "请以 root 或 sudo 运行：\n\n  sudo bash install.sh\n  或\n  curl -fsSL <安装地址> | sudo bash"
+  abort "请以 root 或 sudo 运行：sudo bash install.sh"
 fi
 
 # ── 检查：仅支持 Ubuntu / Debian ─────────────────────
@@ -31,7 +31,7 @@ if [[ ! -f /etc/os-release ]]; then
 fi
 source /etc/os-release
 if [[ "$ID" != "ubuntu" && "$ID" != "debian" ]]; then
-  abort "不支持的操作系统：$PRETTY_NAME。本脚本仅支持 Ubuntu / Debian"
+  abort "不支持的操作系统：$PRETTY_NAME"
 fi
 info "操作系统：$PRETTY_NAME"
 
@@ -43,15 +43,18 @@ echo "  请设置登录管理界面的用户名和密码。"
 echo "  密码将保存在服务器的 .env 文件中（仅 root 可读）。"
 echo ""
 
-read -rp "  用户名 [默认: admin]: " AUTH_USER_INPUTAUTH_USER_INPUT="${AUTH_USER_INPUT:-admin}"
+read -rp "  用户名 [默认: admin]: " AUTH_USER_INPUT
+AUTH_USER_INPUT="${AUTH_USER_INPUT:-admin}"
 
 while true; do
-  read -rsp "  密码（最少 8 位）: " AUTH_PASS_INPUT  echo ""
+  read -rsp "  密码（最少 8 位）: " AUTH_PASS_INPUT
+  echo ""
   if [[ ${#AUTH_PASS_INPUT} -lt 8 ]]; then
     warn "密码不足 8 位（当前 ${#AUTH_PASS_INPUT} 位），请重新输入"
     continue
   fi
-  read -rsp "  再次输入密码确认: " AUTH_PASS_CONFIRM  echo ""
+  read -rsp "  再次输入密码确认: " AUTH_PASS_CONFIRM
+  echo ""
   if [[ "$AUTH_PASS_INPUT" != "$AUTH_PASS_CONFIRM" ]]; then
     warn "两次密码不一致，请重新输入"
     continue
@@ -59,7 +62,8 @@ while true; do
   break
 done
 
-read -rp "  管理界面端口 [默认: 3000]: " PORT_INPUTPORT_INPUT="${PORT_INPUT:-3000}"
+read -rp "  管理界面端口 [默认: 3000]: " PORT_INPUT
+PORT_INPUT="${PORT_INPUT:-3000}"
 echo ""
 info "账户设置完成"
 
@@ -135,6 +139,44 @@ EOF
 chmod 600 "$INSTALL_DIR/.env"
 info ".env 配置文件已写入（权限 600）"
 
+# ── 安装升级命令 whatsapp-upgrade ─────────────────
+cat > /usr/local/bin/whatsapp-upgrade <<'UPGRADESCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+INSTALL_DIR="/opt/whatsapp-bot"
+PM2_APP_NAME="whatsapp-bot"
+GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
+info() { echo -e "${GREEN}[✓]${NC} $*"; }
+warn() { echo -e "${YELLOW}[!]${NC} $*"; }
+
+if [[ $EUID -ne 0 ]]; then
+  echo "请以 root 或 sudo 运行：sudo whatsapp-upgrade"
+  exit 1
+fi
+
+echo ""
+echo "  ╔════════════════════════════════════════════╗"
+echo "  ║    WhatsApp 机器人  一键升级脚本             ║"
+echo "  ╚════════════════════════════════════════════╝"
+echo ""
+
+info "拉取最新代码..."
+git -C "$INSTALL_DIR" pull --ff-only
+
+info "更新依赖..."
+cd "$INSTALL_DIR" && npm install --omit=dev --quiet
+
+info "重启机器人..."
+pm2 restart "$PM2_APP_NAME"
+pm2 save --force >/dev/null
+
+echo ""
+info "升级完成！当前版本：$(git -C "$INSTALL_DIR" log -1 --format='%h %s')"
+echo ""
+UPGRADESCRIPT
+chmod +x /usr/local/bin/whatsapp-upgrade
+info "升级命令已安装：sudo whatsapp-upgrade"
+
 # ════════════════════════════════════════════════════
 step "第 6 步：启动机器人"
 # ════════════════════════════════════════════════════
@@ -146,7 +188,7 @@ info "机器人已启动（PM2 守护）"
 # ── 配置开机自启 ───────────────────────────────────
 STARTUP_CMD=$(pm2 startup systemd -u root --hp /root 2>/dev/null | grep "sudo env" | head -1 || true)
 if [[ -n "$STARTUP_CMD" ]]; then
-  eval "$STARTUP_CMD" >/dev/null 2>&1 && info "开机自启配置完成" || warn "开机自启配置失败，请手动运行：pm2 startup && pm2 save"
+  eval "$STARTUP_CMD" >/dev/null 2>&1 && info "开机自启配置完成" || warn "请手动运行：pm2 startup && pm2 save"
 else
   warn "请手动运行以下命令完成开机自启：pm2 startup && pm2 save"
 fi
@@ -157,10 +199,7 @@ if command -v ufw &>/dev/null; then
 fi
 
 # ════════════════════════════════════════════════════
-# 完成
-# ════════════════════════════════════════════════════
 SERVER_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "服务器IP")
-
 echo ""
 echo "  ╔════════════════════════════════════════════╗"
 echo -e "  ║        ${GREEN}安装完成！${NC}                          ║"
@@ -173,7 +212,8 @@ echo ""
 echo "  下一步：打开浏览器访问上方地址，扫码登录 WhatsApp"
 echo ""
 echo "  常用命令："
-echo "    pm2 logs ${PM2_APP_NAME}     # 查看实时日志"
-echo "    pm2 restart ${PM2_APP_NAME}  # 重启"
-echo "    pm2 stop ${PM2_APP_NAME}     # 停止"
+echo "    pm2 logs ${PM2_APP_NAME}       # 查看实时日志"
+echo "    pm2 restart ${PM2_APP_NAME}    # 重启"
+echo "    pm2 stop ${PM2_APP_NAME}       # 停止"
+echo "    sudo whatsapp-upgrade          # 升级到最新版本"
 echo ""
