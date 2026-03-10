@@ -31,16 +31,20 @@ function createClient() {
   });
 
   client.on('auth_failure', (msg) => {
+    // M6：不直接 exit，保持 Web 界面可用，重新初始化让用户重新扫码
     console.error('[WhatsApp] 认证失败：', msg);
-    console.error('请删除 data/ 目录后重新启动程序扫码登录。');
-    process.exit(1);
+    console.error('[WhatsApp] 正在重新初始化，请刷新页面重新扫码登录...');
+    setTimeout(() => {
+      if (typeof global.reinitializeClient === 'function') {
+        global.reinitializeClient();
+      }
+    }, 3000);
   });
 
   client.on('disconnected', (reason) => {
     console.warn('[WhatsApp] 连接断开，原因：', reason);
     client.initialize().catch((err) => {
-      console.error('[WhatsApp] 重新连接失败：', err);
-      process.exit(1);
+      console.error('[WhatsApp] 重新连接失败：', err.message);
     });
   });
 

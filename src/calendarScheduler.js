@@ -8,6 +8,18 @@ const POLL_INTERVAL_MS = 5 * 60 * 1000; // 每 5 分钟检查一次
 // 记录已调度的提醒，避免重复发送
 const scheduled = new Set();
 
+// H5：定期清理超过 25 小时的旧条目，防止 Set 无限增长
+// uid 格式：`{eventUid}__{startMs}__{jobId}`，从中解析 startMs
+function cleanScheduled() {
+  const cutoff = Date.now() - 25 * 60 * 60 * 1000;
+  for (const uid of scheduled) {
+    const parts = uid.split('__');
+    const startMs = parseInt(parts[parts.length - 2], 10);
+    if (!isNaN(startMs) && startMs < cutoff) scheduled.delete(uid);
+  }
+}
+setInterval(cleanScheduled, 60 * 60 * 1000); // 每小时清理一次
+
 function readCalendarJobs() {
   try {
     const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
@@ -56,7 +68,8 @@ async function checkJob(job) {
     if (msUntil >= -60_000 && msUntil <= POLL_INTERVAL_MS + 60_000) {
       scheduled.add(uid);
       const delay = Math.max(0, msUntil);
-      const title = ev.summary || '(无标题)';
+      // M9：截断过长标题，防止外部 ICS 注入超长内容
+      const title = (ev.summary || '(无标题)').slice(0, 200).replace(/[\r\n]/g, ' ');
       const message = `提醒：${title}`;
       const groupName = job.groupName;
       const label = delay < 60_000 ? '立即' : `${Math.round(delay / 60_000)} 分钟后`;

@@ -1,6 +1,6 @@
 {
   "name": "whatsapp-scheduler-bot-cloud",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "WhatsApp 群组自动定时发消息机器人（云服务器版）",
   "main": "src/index.js",
   "scripts": {

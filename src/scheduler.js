@@ -52,17 +52,23 @@ function loadJobs(client) {
     const task = cron.schedule(
       job.schedule,
       async () => {
+        // M7：使用 global.whatsappClient 而非闭包捕获的旧引用
+        const activeClient = global.whatsappClient;
+        if (!activeClient || !global.whatsappReady) {
+          console.warn(`[Scheduler] 任务 "${job.id}" 跳过：WhatsApp 未连接`);
+          return;
+        }
         const now = new Date().toLocaleString('zh-CN', { timeZone: timezone });
         console.log(`[Scheduler] [${now}] 触发任务 "${job.id}" → 群组："${job.groupName}"`);
 
-        const chatId = await resolve(client, job.groupName);
+        const chatId = await resolve(activeClient, job.groupName);
         if (!chatId) {
           console.error(`[Scheduler] 任务 "${job.id}" 失败：找不到群组。`);
           return;
         }
 
         try {
-          const chat = await client.getChatById(chatId);
+          const chat = await activeClient.getChatById(chatId);
           await chat.sendMessage(job.message);
           console.log(`[Scheduler] 任务 "${job.id}" 发送成功。`);
         } catch (err) {

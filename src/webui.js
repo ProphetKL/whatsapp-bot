@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const QRCode = require('qrcode');
 const { reloadJobs } = require('./scheduler');
+const { checkAllJobs } = require('./calendarScheduler');
 
 const CONFIG_PATH = path.join(__dirname, '..', 'config', 'schedules.json');
 const PUBLIC_PATH = path.join(__dirname, '..', 'public');
@@ -34,6 +35,30 @@ const authFailures = new Map();
 const MAX_FAILURES = 5;
 const WINDOW_MS = 15 * 60 * 1000; // 15 分钟
 
+// H1/M10：校验日历 URL——必须 HTTPS，且不能指向内网地址
+function isPrivateHost(hostname) {
+  if (hostname === 'localhost' || hostname === '::1' || hostname === '0.0.0.0') return true;
+  if (/^127\./.test(hostname)) return true;           // loopback
+  if (/^10\./.test(hostname)) return true;            // 10.x.x.x
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(hostname)) return true; // 172.16-31.x.x
+  if (/^192\.168\./.test(hostname)) return true;      // 192.168.x.x
+  if (/^169\.254\./.test(hostname)) return true;      // 链路本地（云元数据接口）
+  return false;
+}
+
+function validateCalendarUrl(url) {
+  if (!url.startsWith('https://')) return '链接必须使用 HTTPS';
+  if (!url.endsWith('.ics') && !url.includes('basic.ics') && !url.includes('ical'))
+    return '链接格式不正确，应以 .ics 结尾。请在 Google 日历 → 设置 → 整合日历 → 复制「iCal 格式的公开地址」';
+  try {
+    const { hostname } = new URL(url);
+    if (isPrivateHost(hostname)) return '不允许访问内网地址';
+  } catch {
+    return '链接格式无效';
+  }
+  return null; // 通过校验
+}
+
 function startWebUI(port) {
   port = port || parseInt(process.env.PORT) || 3000;
 
@@ -41,7 +66,8 @@ function startWebUI(port) {
   const authPass = process.env.AUTH_PASS; // index.js 已保证此值存在
 
   const app = express();
-  app.use(express.json());
+  app.set('trust proxy', 1); // H4：反向代理后正确读取客户端真实 IP
+  app.use(express.json({ limit: '10kb' })); // M4：限制请求体大小
 
   // ── 安全响应头 ──────────────────────────────────
   app.use((req, res, next) => {
@@ -49,6 +75,9 @@ function startWebUI(port) {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-XSS-Protection', '1; mode=block');
     res.setHeader('Referrer-Policy', 'no-referrer');
+    // L7：Content-Security-Policy，阻止加载外部脚本/资源
+    res.setHeader('Content-Security-Policy',
+      "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'");
     next();
   });
 
@@ -116,6 +145,7 @@ function startWebUI(port) {
       if (global.whatsappReady && global.whatsappClient) {
         reloadJobs(global.whatsappClient);
       }
+      checkAllJobs(); // M8：日历调度器立即重新检查，不等 5 分钟轮询
       res.json({ ok: true });
     } catch (err) {
       res.status(500).json({ error: '保存配置失败：' + err.message });
@@ -188,13 +218,19 @@ function startWebUI(port) {
 
   app.post('/api/calendar-jobs', (req, res) => {
     try {
+      const job = req.body;
+      // H1/M10：校验 ICS URL
+      if (job.calendarUrl) {
+        const urlError = validateCalendarUrl(job.calendarUrl);
+        if (urlError) return res.status(400).json({ error: urlError });
+      }
       const config = readConfig();
       if (!config.calendarJobs) config.calendarJobs = [];
-      const job = req.body;
       const idx = config.calendarJobs.findIndex(j => j.id === job.id);
       if (idx >= 0) config.calendarJobs[idx] = job;
       else config.calendarJobs.push(job);
       writeConfig(config);
+      checkAllJobs(); // M8：立即生效
       res.json({ ok: true });
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -216,9 +252,8 @@ function startWebUI(port) {
   app.post('/api/calendar-preview', async (req, res) => {
     const { url } = req.body;
     if (!url) return res.status(400).json({ ok: false, error: '请提供 URL' });
-    if (!url.endsWith('.ics') && !url.includes('basic.ics') && !url.includes('ical')) {
-      return res.json({ ok: false, error: '链接格式不正确，应以 .ics 结尾。请在 Google 日历 → 设置 → 整合日历 → 复制「iCal 格式的公开地址」' });
-    }
+    const urlError = validateCalendarUrl(url); // H1/M10
+    if (urlError) return res.status(400).json({ ok: false, error: urlError });
     try {
       const ical = require('node-ical');
       const events = await ical.async.fromURL(url);

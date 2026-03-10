@@ -10,8 +10,7 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         PORT: 3000,
-        // AUTH_USER: 'admin',
-        // AUTH_PASS: 'your_password_here',
+        // 认证凭据请在 .env 文件中配置，切勿在此填写
       },
     },
   ],
