@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ── 配置（发布前修改为你的 GitHub 地址）────────────────
-REPO_URL="https://github.com/ProphetKL/K-HUB.git"
+REPO_URL="https://github.com/ProphetKL/whatsapp-bot.git"
 INSTALL_DIR="/opt/whatsapp-bot"
 PM2_APP_NAME="whatsapp-bot"
 
