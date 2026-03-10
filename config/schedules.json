@@ -3,27 +3,5 @@
     "timezone": "Asia/Hong_Kong",
     "groupResolveCacheMinutes": 60
   },
-  "jobs": [
-    {
-      "id": "接校车",
-      "enabled": true,
-      "groupName": "金金家香港群",
-      "schedule": "0 16 * * 1,2,3",
-      "message": "提醒：该接校车了"
-    },
-    {
-      "id": "提醒点心和晚餐",
-      "enabled": true,
-      "groupName": "金金家香港群",
-      "schedule": "30 20 * * 0,1,2,3,4",
-      "message": "提醒：询问并记录金金第二天的点心和晚餐要求"
-    },
-    {
-      "id": "接校车（无ASA）",
-      "enabled": true,
-      "groupName": "金金家香港群",
-      "schedule": "0 16 * * 4,5",
-      "message": "提醒：该接校车了"
-    }
-  ]
+  "jobs": []
 }
