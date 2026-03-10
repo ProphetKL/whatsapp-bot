@@ -511,9 +511,16 @@ function cronLabel(cron) {
 }
 
 async function loadConfig() {
-  const res = await fetch('/api/config');
-  config = await res.json();
-  renderJobs();
+  try {
+    const res = await fetch('/api/config');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    config = await res.json();
+    renderJobs();
+  } catch (err) {
+    document.getElementById('job-list').innerHTML =
+      `<div class="empty-state" style="color:#f5222d">加载失败：${err.message}<br><br>
+       <button class="btn btn-secondary" onclick="loadConfig()">重试</button></div>`;
+  }
 }
 
 async function checkStatus() {
