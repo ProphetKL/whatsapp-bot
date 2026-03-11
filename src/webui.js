@@ -2,6 +2,9 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const QRCode = require('qrcode');
+const multer = require('multer');
+const { MessageMedia } = require('whatsapp-web.js');
+const { resolve: resolveGroup } = require('./groupResolver');
 const { reloadJobs } = require('./scheduler');
 const { checkAllJobs } = require('./calendarScheduler');
 
@@ -57,6 +60,23 @@ function validateCalendarUrl(url) {
     return '链接格式无效';
   }
   return null; // 通过校验
+}
+
+// 即时/定时发送：待发队列（重启后清空）
+const pendingSends = new Map();
+
+async function doSendMessage(groupName, text, file) {
+  const client = global.whatsappClient;
+  if (!client || !global.whatsappReady) throw new Error('WhatsApp 未连接');
+  const chatId = await resolveGroup(client, groupName);
+  if (!chatId) throw new Error(`找不到群组：${groupName}`);
+  const chat = await client.getChatById(chatId);
+  if (file) {
+    const media = new MessageMedia(file.mimetype, file.buffer.toString('base64'), file.originalname);
+    await chat.sendMessage(media, text ? { caption: text } : {});
+  } else {
+    await chat.sendMessage(text);
+  }
 }
 
 function startWebUI(port) {
@@ -246,6 +266,68 @@ function startWebUI(port) {
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
+  });
+
+  // ── 即时/定时消息发布 ──────────────────────────────────
+  const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
+  });
+
+  app.post('/api/send', upload.single('file'), async (req, res) => {
+    try {
+      const { group, text, sendAt } = req.body;
+      if (!group) return res.status(400).json({ ok: false, error: '请选择目标群组' });
+      if (!text && !req.file) return res.status(400).json({ ok: false, error: '请输入消息内容或选择文件' });
+
+      const file = req.file
+        ? { buffer: req.file.buffer, mimetype: req.file.mimetype, originalname: req.file.originalname }
+        : null;
+
+      // sendAt 格式：datetime-local 值 + HKT 偏移，如 "2024-01-01T09:00+08:00"
+      const scheduledTime = sendAt ? new Date(sendAt) : null;
+      const delay = scheduledTime ? scheduledTime.getTime() - Date.now() : 0;
+
+      if (delay > 2000) {
+        const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
+        const timeoutId = setTimeout(async () => {
+          try {
+            await doSendMessage(group, text, file);
+            console.log(`[Send] 定时消息已发送到 ${group}`);
+          } catch (err) {
+            console.error(`[Send] 定时消息发送失败：${err.message}`);
+          } finally {
+            pendingSends.delete(id);
+          }
+        }, delay);
+        pendingSends.set(id, {
+          id, group,
+          preview: text ? text.slice(0, 50) : (file ? `[文件] ${file.originalname}` : ''),
+          sendAt: scheduledTime.toISOString(),
+          timeoutId,
+        });
+        return res.json({ ok: true, message: '已安排定时发送', pendingId: id, sendAt: scheduledTime.toISOString() });
+      } else {
+        await doSendMessage(group, text, file);
+        return res.json({ ok: true, message: '发送成功' });
+      }
+    } catch (err) {
+      console.error('[Send] 发送失败：', err.message);
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  app.get('/api/pending-sends', (req, res) => {
+    const list = [...pendingSends.values()].map(({ id, group, preview, sendAt }) => ({ id, group, preview, sendAt }));
+    res.json(list);
+  });
+
+  app.delete('/api/pending-sends/:id', (req, res) => {
+    const item = pendingSends.get(req.params.id);
+    if (!item) return res.status(404).json({ error: '未找到该待发消息' });
+    clearTimeout(item.timeoutId);
+    pendingSends.delete(req.params.id);
+    res.json({ ok: true });
   });
 
   // 验证 ICS 链接并预览近期事件

@@ -1,7 +1,7 @@
 {
   "name": "whatsapp-scheduler-bot-cloud",
-  "version": "0.0.4",
-  "description": "WhatsApp 群组自动定时发消息机器人（云服务器版）",
+  "version": "0.0.5",
+  "description": "家庭信息发布平台（云服务器版）",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
@@ -16,7 +16,8 @@
     "express": "^4.18.2",
     "qrcode": "^1.5.3",
     "dotenv": "^16.4.5",
-    "node-ical": "^0.19.0"
+    "node-ical": "^0.19.0",
+    "multer": "^1.4.5-lts.1"
   },
   "engines": {
     "node": ">=20.0.0"

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>WhatsApp 定时消息管理</title>
+  <title>家庭信息发布平台</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; color: #1a1a1a; }
@@ -177,13 +177,26 @@
       transition: opacity 0.3s;
     }
     #toast.show { opacity: 1; }
+    .file-upload-area {
+      border: 2px dashed #d9d9d9; border-radius: 8px; padding: 16px;
+      text-align: center; cursor: pointer; color: #888; font-size: 14px;
+      transition: border-color 0.2s;
+    }
+    .file-upload-area:hover { border-color: #25d366; }
+    .file-upload-area img { max-width: 100%; max-height: 200px; border-radius: 6px; display: block; margin: 8px auto 0; }
+    .send-mode-row { display: flex; gap: 8px; margin-bottom: 8px; }
+    .pending-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: #f9f9f9; border-radius: 6px; margin-bottom: 6px; font-size: 13px; }
+    .pending-item .pending-info { flex: 1; }
+    .pending-item .pending-group { font-weight: 600; }
+    .pending-item .pending-time { color: #888; font-size: 12px; }
+    .pending-item .pending-preview { color: #555; margin-top: 2px; }
   </style>
 </head>
 <body>
 
 <header>
   <div>
-    <h1>📱 WhatsApp 定时消息管理</h1>
+    <h1>🏠 家庭信息发布平台</h1>
     <span id="version-badge" style="font-size:11px;opacity:0.6;margin-top:2px;display:block"></span>
   </div>
   <div style="display:flex;align-items:center;gap:12px;">
@@ -198,6 +211,50 @@
     <div class="card-header"><h2>扫码登录 WhatsApp</h2></div>
     <div class="card-body" id="qr-card-body">
       <div id="qr-loading">正在生成 QR 码，请稍候...</div>
+    </div>
+  </div>
+
+  <!-- 即时消息发布 -->
+  <div class="card" id="send-card" style="display:none">
+    <div class="card-header">
+      <h2>📢 即时消息发布</h2>
+    </div>
+    <div class="card-body">
+      <div class="form-group">
+        <label>目标群组</label>
+        <select id="send-group-select" style="display:none"></select>
+        <input type="text" id="send-group-text" placeholder="群组名称（与 WhatsApp 完全一致）" />
+      </div>
+      <div class="form-group">
+        <label>消息内容（与附件至少填一项）</label>
+        <textarea id="send-text" rows="3" placeholder="输入消息内容...&#10;支持 WhatsApp 格式：*粗体*、_斜体_"></textarea>
+      </div>
+      <div class="form-group">
+        <label>附件（可选，图片/视频/文件，最大 20MB）</label>
+        <div class="file-upload-area" id="send-file-area" onclick="document.getElementById('send-file-input').click()">
+          <div id="send-file-placeholder">点击选择文件</div>
+          <img id="send-file-preview-img" style="display:none" alt="预览" />
+        </div>
+        <input type="file" id="send-file-input" style="display:none" onchange="onSendFileSelect(this)" />
+        <button id="send-clear-file-btn" class="btn btn-secondary btn-sm" style="display:none;margin-top:8px" onclick="clearSendFile()">✕ 清除附件</button>
+      </div>
+      <div class="form-group">
+        <label>发送时间</label>
+        <div class="send-mode-row">
+          <button class="repeat-btn active" id="send-mode-now-btn" onclick="setSendMode('now')">立即发送</button>
+          <button class="repeat-btn" id="send-mode-later-btn" onclick="setSendMode('later')">定时发送</button>
+        </div>
+        <div id="send-datetime-row" style="display:none">
+          <input type="datetime-local" id="send-datetime" style="width:100%;padding:9px 12px;border:1px solid #d9d9d9;border-radius:7px;font-size:14px" />
+        </div>
+      </div>
+      <div style="display:flex;justify-content:flex-end">
+        <button class="btn btn-primary" id="send-btn" onclick="doSend()">发送</button>
+      </div>
+      <div id="pending-sends-section" style="display:none;margin-top:16px;border-top:1px solid #f0f0f0;padding-top:16px">
+        <div style="font-size:14px;font-weight:600;margin-bottom:8px">待发送列表</div>
+        <div id="pending-sends-list"></div>
+      </div>
     </div>
   </div>
 
@@ -266,10 +323,8 @@
         <label>重复方式</label>
         <div class="repeat-type">
           <button class="repeat-btn active" data-type="daily" onclick="setRepeat('daily')">每天</button>
-          <button class="repeat-btn" data-type="today" onclick="setRepeat('today')">今天（单次）</button>
           <button class="repeat-btn" data-type="weekly" onclick="setRepeat('weekly')">每周指定日</button>
           <button class="repeat-btn" data-type="monthly" onclick="setRepeat('monthly')">每月指定日</button>
-          <button class="repeat-btn" data-type="once" onclick="setRepeat('once')">指定日期（单次）</button>
         </div>
 
         <!-- 每周 -->
@@ -288,12 +343,6 @@
         <!-- 每月 -->
         <div id="r-monthly" style="display:none">
           <div class="monthday-picker" id="monthday-picker"></div>
-        </div>
-
-        <!-- 指定日期 / 今天 -->
-        <div id="r-once" style="display:none">
-          <div id="today-display" style="display:none;padding:9px 12px;background:#f6ffed;border:1px solid #b7eb8f;border-radius:7px;font-size:14px;color:#135200;"></div>
-          <input type="date" id="f-date" style="width:100%;padding:9px 12px;border:1px solid #d9d9d9;border-radius:7px;font-size:14px;cursor:pointer;" />
         </div>
       </div>
 
@@ -426,30 +475,9 @@ function todayStr() {
 
 function setRepeat(type) {
   repeatType = type;
-  document.querySelectorAll('.repeat-btn').forEach(b => b.classList.toggle('active', b.dataset.type === type));
+  document.querySelectorAll('#modal .repeat-btn').forEach(b => b.classList.toggle('active', b.dataset.type === type));
   document.getElementById('r-weekly').style.display = type === 'weekly' ? 'block' : 'none';
   document.getElementById('r-monthly').style.display = type === 'monthly' ? 'block' : 'none';
-
-  const onceDiv = document.getElementById('r-once');
-  const dateInput = document.getElementById('f-date');
-  const todayDisplay = document.getElementById('today-display');
-
-  if (type === 'today') {
-    onceDiv.style.display = 'block';
-    const t = todayStr();
-    dateInput.value = t;
-    dateInput.style.display = 'none';
-    const [y, mo, day] = t.split('-');
-    todayDisplay.textContent = `📅 今天：${y} 年 ${mo} 月 ${day} 日`;
-    todayDisplay.style.display = 'block';
-  } else if (type === 'once') {
-    onceDiv.style.display = 'block';
-    todayDisplay.style.display = 'none';
-    dateInput.style.display = 'block';
-    if (!dateInput.value) dateInput.value = todayStr();
-  } else {
-    onceDiv.style.display = 'none';
-  }
 }
 
 function cronToUi(cron) {
@@ -479,17 +507,6 @@ function uiToCron() {
   if (repeatType === 'monthly') {
     if (!selectedMonthdays.length) { showToast('请至少选择一个日期'); return null; }
     return `${m} ${h} ${selectedMonthdays.join(',')} * *`;
-  }
-  if (repeatType === 'today') {
-    const d = todayStr();
-    const [y, mo, day] = d.split('-');
-    return `${m} ${h} ${parseInt(day)} ${parseInt(mo)} *`;
-  }
-  if (repeatType === 'once') {
-    const d = document.getElementById('f-date').value;
-    if (!d) { showToast('请选择日期'); return null; }
-    const [y, mo, day] = d.split('-');
-    return `${m} ${h} ${parseInt(day)} ${parseInt(mo)} *`;
   }
   return null;
 }
@@ -541,11 +558,14 @@ async function checkStatus() {
 
   if (ready) {
     qrCard.style.display = 'none';
+    document.getElementById('send-card').style.display = 'block';
     jobsCard.style.display = 'block';
     document.getElementById('calendar-card').style.display = 'block';
     const warn = document.getElementById('whatsapp-warning');
     if (warn) warn.style.display = 'none';
+    populateSendGroupField();
   } else {
+    document.getElementById('send-card').style.display = 'none';
     jobsCard.style.display = 'none';
     document.getElementById('calendar-card').style.display = 'none';
     qrCard.style.display = 'block';
@@ -997,6 +1017,136 @@ async function saveCalendarJob() {
 }
 
 loadCalendarJobs();
+
+// ── 即时消息发布 ─────────────────────────────────────────────────
+let currentSendMode = 'now';
+
+function setSendMode(mode) {
+  currentSendMode = mode;
+  document.getElementById('send-mode-now-btn').classList.toggle('active', mode === 'now');
+  document.getElementById('send-mode-later-btn').classList.toggle('active', mode === 'later');
+  document.getElementById('send-datetime-row').style.display = mode === 'later' ? 'block' : 'none';
+}
+
+function onSendFileSelect(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const ph = document.getElementById('send-file-placeholder');
+  const img = document.getElementById('send-file-preview-img');
+  if (file.type.startsWith('image/')) {
+    const reader = new FileReader();
+    reader.onload = e => { img.src = e.target.result; img.style.display = 'block'; ph.style.display = 'none'; };
+    reader.readAsDataURL(file);
+  } else {
+    img.style.display = 'none';
+    ph.textContent = `📎 ${file.name} (${(file.size/1024/1024).toFixed(1)} MB)`;
+    ph.style.display = 'block';
+  }
+  document.getElementById('send-clear-file-btn').style.display = 'inline-flex';
+}
+
+function clearSendFile() {
+  document.getElementById('send-file-input').value = '';
+  document.getElementById('send-file-placeholder').textContent = '点击选择文件';
+  document.getElementById('send-file-placeholder').style.display = 'block';
+  document.getElementById('send-file-preview-img').style.display = 'none';
+  document.getElementById('send-clear-file-btn').style.display = 'none';
+}
+
+function getSendGroup() {
+  const sel = document.getElementById('send-group-select');
+  const txt = document.getElementById('send-group-text');
+  if (sel.style.display !== 'none' && sel.value) return sel.value;
+  return txt.value.trim();
+}
+
+async function populateSendGroupField() {
+  const res = await fetch('/api/groups').catch(() => null);
+  if (!res || !res.ok) return;
+  const { groups, ready } = await res.json();
+  const sel = document.getElementById('send-group-select');
+  const txt = document.getElementById('send-group-text');
+  if (ready && groups.length > 0) {
+    const current = getSendGroup();
+    sel.innerHTML = groups.map(g => `<option value="${escHtml(g)}" ${g === current ? 'selected' : ''}>${escHtml(g)}</option>`).join('');
+    sel.style.display = 'block';
+    txt.style.display = 'none';
+  }
+}
+
+async function doSend() {
+  const group = getSendGroup();
+  const text = document.getElementById('send-text').value.trim();
+  const fileInput = document.getElementById('send-file-input');
+  const file = fileInput.files[0];
+  if (!group) return showToast('请选择目标群组');
+  if (!text && !file) return showToast('请输入消息内容或选择文件');
+  if (currentSendMode === 'later') {
+    const dt = document.getElementById('send-datetime').value;
+    if (!dt) return showToast('请选择发送时间');
+    const sendAt = dt + ':00+08:00'; // 转为 HKT ISO 格式
+    const form = new FormData();
+    form.append('group', group);
+    if (text) form.append('text', text);
+    if (file) form.append('file', file);
+    form.append('sendAt', sendAt);
+    await submitSend(form);
+  } else {
+    const form = new FormData();
+    form.append('group', group);
+    if (text) form.append('text', text);
+    if (file) form.append('file', file);
+    await submitSend(form);
+  }
+}
+
+async function submitSend(form) {
+  const btn = document.getElementById('send-btn');
+  btn.disabled = true; btn.textContent = '发送中...';
+  try {
+    const res = await fetch('/api/send', { method: 'POST', body: form });
+    const data = await res.json();
+    if (data.ok) {
+      showToast(data.message);
+      document.getElementById('send-text').value = '';
+      clearSendFile();
+      if (data.pendingId) await loadPendingSends();
+    } else {
+      showToast('失败：' + data.error);
+    }
+  } catch (err) {
+    showToast('网络错误：' + err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '发送';
+  }
+}
+
+async function loadPendingSends() {
+  const res = await fetch('/api/pending-sends').catch(() => null);
+  if (!res || !res.ok) return;
+  const list = await res.json();
+  const section = document.getElementById('pending-sends-section');
+  const container = document.getElementById('pending-sends-list');
+  if (!list.length) { section.style.display = 'none'; return; }
+  section.style.display = 'block';
+  container.innerHTML = list.map(item => {
+    const t = new Date(item.sendAt).toLocaleString('zh-CN', { timeZone: 'Asia/Hong_Kong' });
+    return `<div class="pending-item">
+      <div class="pending-info">
+        <div class="pending-group">📌 ${escHtml(item.group)}</div>
+        <div class="pending-preview">${escHtml(item.preview)}</div>
+        <div class="pending-time">⏰ ${escHtml(t)}</div>
+      </div>
+      <button class="btn btn-danger btn-sm" onclick="cancelPendingSend('${escHtml(item.id)}')">取消</button>
+    </div>`;
+  }).join('');
+}
+
+async function cancelPendingSend(id) {
+  await fetch(`/api/pending-sends/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  await loadPendingSends();
+  showToast('已取消');
+}
 </script>
 </body>
 </html>
