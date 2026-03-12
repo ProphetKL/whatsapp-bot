@@ -45,8 +45,9 @@ async function checkJob(job) {
     if (ev.type !== 'VEVENT' || !ev.start) continue;
     if (ev.rrule) {
       // 重复事件：找出下一个轮询窗口内需要提醒的发生日期
-      const searchStart = new Date(now - reminderMs - 60_000);
-      const searchEnd = new Date(now - reminderMs + POLL_INTERVAL_MS + 60_000);
+      // searchStart/End 是事件开始时间的范围：提醒时刻在 [now-1min, now+轮询间隔+1min] 内
+      const searchStart = new Date(now + reminderMs - 60_000);
+      const searchEnd = new Date(now + reminderMs + POLL_INTERVAL_MS + 60_000);
       const occurrences = ev.rrule.between(searchStart, searchEnd);
       for (const occ of occurrences) {
         instances.push({ ev, startMs: occ.getTime() });
